@@ -1,30 +1,137 @@
-name: Build job report on demand
+name: Build & Publish Daily Job Picks
+
 on:
+  schedule:
+    # 12:00 UTC ≈ 08:00 ET (America/New_York)
+    - cron: "0 12 * * *"
   workflow_dispatch:
+    inputs:
+      top_k:
+        description: "How many jobs to show"
+        required: false
+        default: "3"
+      recency_days:
+        description: "Only consider jobs posted in the last N days"
+        required: false
+        default: "45"
+      config_path:
+        description: "Path to your config file"
+        required: false
+        default: "config.yml"
+      run_label:
+        description: "Optional label for this manual run"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
-  run:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - run: python -m pip install --upgrade pip
-      - run: pip install -r requirements.txt
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # OPTIONAL: if your config.yml includes placeholders like ${USAJOBS_EMAIL},
+      # this step creates a runtime copy with env vars resolved + manual inputs applied.
+      - name: Prepare runtime config (resolve env + inputs)
+        env:
+          CFG_PATH: ${{ github.event.inputs.config_path || 'config.yml' }}
+          TOP_K: ${{ github.event.inputs.top_k || '3' }}
+          RECENCY_DAYS: ${{ github.event.inputs.recency_days || '45' }}
+          USAJOBS_EMAIL: ${{ secrets.USAJOBS_EMAIL }}
+          USAJOBS_API_KEY: ${{ secrets.USAJOBS_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os, sys, yaml
+          src = os.environ.get("CFG_PATH", "config.yml")
+          with open(src, "r") as f:
+              cfg = yaml.safe_load(f)
+
+          def resolve_env(v):
+              if isinstance(v, str) and v.startswith("${") and v.endswith("}"):
+                  return os.getenv(v[2:-1], "")
+              return v
+
+          def walk(x):
+              if isinstance(x, dict): return {k: walk(v) for k,v in x.items()}
+              if isinstance(x, list): return [walk(v) for v in x]
+              return resolve_env(x)
+
+          cfg = walk(cfg)
+
+          # Apply manual inputs (if provided)
+          top_k = int(os.environ.get("TOP_K","3"))
+          recency_days = int(os.environ.get("RECENCY_DAYS","45"))
+          cfg.setdefault("output", {})["top_k"] = top_k
+          cfg["recency_days"] = recency_days
+
+          # Ensure USAJOBS creds are injected if enabled
+          usaj = cfg.get("sources", {}).get("usajobs", {})
+          if usaj and usaj.get("enabled"):
+              if os.getenv("USAJOBS_EMAIL"): usaj["email"] = os.getenv("USAJOBS_EMAIL")
+              if os.getenv("USAJOBS_API_KEY"): usaj["api_key"] = os.getenv("USAJOBS_API_KEY")
+
+          os.makedirs("data/reports", exist_ok=True)
+          with open("config.runtime.yml", "w") as f:
+              yaml.safe_dump(cfg, f, sort_keys=False)
+
+          print("Wrote config.runtime.yml with top_k=", top_k, "recency_days=", recency_days)
+          PY
+          echo "JOBREC_CONFIG=config.runtime.yml" >> $GITHUB_ENV
+
       - name: Run recommender
         env:
           USAJOBS_EMAIL: ${{ secrets.USAJOBS_EMAIL }}
           USAJOBS_API_KEY: ${{ secrets.USAJOBS_API_KEY }}
-        run: python app.py
+        run: |
+          python app.py
+
       - name: Prepare Pages content
         run: |
           mkdir -p public
-          cp data/reports/jobs_*.html public/index.html
+          # Use the newest report as the site homepage
+          latest=$(ls -t data/reports/jobs_*.html | head -n1)
+          cp "$latest" public/index.html
+          # Keep a small archive too
+          mkdir -p public/archive
+          cp data/reports/jobs_*.html public/archive/ || true
+          # Add a simple listing page
+          cat > public/README.html <<'HTML'
+          <!doctype html><meta charset="utf-8">
+          <h2>Daily Job Picks</h2>
+          <p>This site auto-updates daily and on demand. See <a href="./">today's picks</a> or browse the <a href="./archive/">archive</a>.</p>
+          HTML
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./public
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
