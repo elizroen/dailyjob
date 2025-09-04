@@ -1,0 +1,32 @@
+name: Build daily job report
+on:
+  schedule:
+    - cron: "0 12 * * *"   # 12:00 UTC ≈ 8am ET
+  workflow_dispatch:
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      - name: Run recommender
+        env:
+          USAJOBS_EMAIL: ${{ secrets.USAJOBS_EMAIL }}
+          USAJOBS_API_KEY: ${{ secrets.USAJOBS_API_KEY }}
+        run: python app.py
+      - name: Prepare Pages content
+        run: |
+          mkdir -p public
+          cp data/reports/jobs_*.html public/index.html
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
