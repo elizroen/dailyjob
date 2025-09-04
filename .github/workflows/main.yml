@@ -1,7 +1,5 @@
-name: Build daily job report
+name: Build job report on demand
 on:
-  schedule:
-    - cron: "0 12 * * *"   # 12:00 UTC ≈ 8am ET
   workflow_dispatch:
 jobs:
   run:
