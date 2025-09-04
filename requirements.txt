@@ -1,0 +1,7 @@
+requests
+PyYAML
+pandas
+scikit-learn
+beautifulsoup4
+python-dateutil
+lxml
