@@ -1,0 +1,73 @@
+profile:
+  titles:
+    - "Director of Evaluation"
+    - "Head of Learning"
+    - "Customer Success (Public Sector)"
+    - "Grants Management"
+  skills:
+    - "monitoring and evaluation"
+    - "evidence use"
+    - "philanthropy"
+    - "USAID"
+    - "AI policy"
+    - "program management"
+  seniority:
+    include: ["Senior", "Director", "Lead", "Head", "Principal"]
+    exclude: ["Intern", "Junior", "Assistant"]
+  locations:
+    include: ["Washington", "DC", "Remote", "Anywhere", "United States", "US"]
+    exclude: []
+  must_have_keywords:
+    - "evaluation"
+  nice_to_have_keywords:
+    - "grantmaking"
+    - "evidence"
+  block_keywords:
+    - "unpaid"
+
+sources:
+  # Existing ATS
+  lever_companies:
+    - openai
+    - internet-society
+  greenhouse_companies:
+    - hewlett
+    - givewell
+  ashby_orgs:
+    - orgId: "impactgenome"
+
+  # World Bank Group (SmartRecruiters)
+  smartrecruiters_orgs:
+    - org: "worldbank"
+
+  # USAJOBS (requires a free API key)
+  usajobs:
+    enabled: true
+    email: "your.email@example.com"   # This is your 'User-Agent' per USAJOBS API rules
+    api_key: "YOUR_USAJOBS_DEVELOPER_KEY"
+
+
+  # Gates Foundation (Workday)
+  workday:
+    enabled: true
+    tenant_shortname: "gatesfoundation"
+    career_site: "GatesFoundation"
+
+  # HigherEdJobs RSS (tweak to your discipline/region)
+  highered_rss:
+    - "https://www.higheredjobs.com/rss/default.cfm"
+
+  # Philanthropy jobs RSS (examples)
+  philanthropy_rss:
+    - "https://philanthropynewsdigest.org/jobs/rss"
+
+output:
+  top_k: 3
+  out_dir: "data/reports"
+  csv_log: "data/reports/job_log.csv"
+
+cache:
+  sqlite_path: "data/cache.db"
+
+# Optional: tighten or widen recency filter for postings (days)
+recency_days: 5
